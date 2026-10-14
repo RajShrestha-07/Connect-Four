@@ -1,0 +1,205 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Connect Four</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,800&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: one narrow column on graph paper. Seven column buttons sit above a 7x6 board. You play the hot color, the computer plays the ink color. */
+:root {
+  --paper: #eef1f4; --card: #ffffff; --ink: #14233a; --muted: #5c6b80; --line: #cdd5df;
+  --you: #e8452c; --cpu: #14233a; --hole: #dde3ea; --win: #fbe3dd;
+  --accent: #14233a; --accent-ink: #eef1f4;
+  --display: "Bricolage Grotesque", "Trebuchet MS", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #0f1826; --card: #17233a; --ink: #e7ecf4; --muted: #93a2ba; --line: #2a3a56;
+    --you: #ffb02e; --cpu: #e7ecf4; --hole: #243450; --win: #3a3320; --accent: #e7ecf4; --accent-ink: #0f1826; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #0f1826; --card: #17233a; --ink: #e7ecf4; --muted: #93a2ba; --line: #2a3a56;
+  --you: #ffb02e; --cpu: #e7ecf4; --hole: #243450; --win: #3a3320; --accent: #e7ecf4; --accent-ink: #0f1826; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--paper); color: var(--ink); font-family: var(--mono); font-size: 14px; line-height: 1.5;
+  padding-inline: 16px; padding-block: 28px 56px;
+  background-image: linear-gradient(var(--line) 1px, transparent 1px), linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 28px 28px; background-position: -1px -1px;
+}
+main { max-width: 460px; margin-inline: auto; }
+.panel { background: var(--paper); border: 1px solid var(--line); border-radius: 4px; padding: 14px 16px; display: flex; flex-direction: column; gap: 12px; }
+h1 { font-family: var(--display); font-weight: 800; font-size: clamp(2rem, 9vw, 3rem); line-height: 1; letter-spacing: -0.02em; margin: 0; }
+p { margin: 0; color: var(--muted); }
+button { font: inherit; cursor: pointer; }
+button:focus-visible { outline: 3px solid var(--you); outline-offset: 2px; }
+.status { font: 800 1.2rem var(--display); min-height: 1.6em; }
+.cols, .board { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
+.drop { min-width: 0; padding: 6px 0; font-weight: 600; color: var(--ink); background: var(--card); border: 1px solid var(--ink); border-radius: 4px; }
+.drop:disabled { opacity: 0.35; cursor: default; }
+.board { padding: 6px; background: var(--card); border: 2px solid var(--ink); border-radius: 4px; }
+.hole { aspect-ratio: 1; border-radius: 50%; background: var(--hole); min-width: 0; }
+.hole.you { background: var(--you); }
+.hole.cpu { background: var(--cpu); }
+.hole.win { outline: 3px solid var(--ink); outline-offset: -3px; }
+.row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
+.btn { font-weight: 600; padding: 9px 14px; color: var(--accent-ink); background: var(--accent); border: 2px solid var(--accent); border-radius: 4px; }
+.stat { display: flex; gap: 16px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.stat b { color: var(--ink); font-weight: 600; }
+.key { display: flex; gap: 16px; font-size: 12px; color: var(--muted); }
+.dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; margin-right: 6px; vertical-align: -1px; }
+</style>
+
+<main>
+  <div class="panel">
+    <h1>Connect Four</h1>
+    <p>Drop discs and get four in a row, across, up or diagonal, before the computer does.</p>
+    <div class="key"><span><i class="dot" style="background: var(--you)"></i>You</span><span><i class="dot" style="background: var(--cpu)"></i>Computer</span></div>
+    <div class="status" id="status" role="status"></div>
+    <div class="cols" id="cols"></div>
+    <div class="board" id="board" aria-label="Connect Four board"></div>
+    <div class="row">
+      <button class="btn" id="new" type="button">New game</button>
+      <div class="stat"><span>Wins <b id="w">0</b></span><span>Losses <b id="l">0</b></span><span>Draws <b id="d">0</b></span></div>
+    </div>
+  </div>
+</main>
+
+<script>
+(function () {
+  var R = 6, C = 7, YOU = 1, CPU = 2;
+  var b, over, busy, wins = 0, losses = 0, draws = 0, starter = YOU;
+  var $ = function (id) { return document.getElementById(id); };
+  var colsEl = $("cols"), boardEl = $("board"), dropBtns = [], holes = [];
+
+  for (var c = 0; c < C; c++) {
+    (function (col) {
+      var d = document.createElement("button");
+      d.type = "button"; d.className = "drop"; d.textContent = "↓"; d.setAttribute("aria-label", "Drop in column " + (col + 1));
+      d.addEventListener("click", function () { human(col); });
+      colsEl.appendChild(d); dropBtns.push(d);
+    })(c);
+  }
+  for (var r = 0; r < R; r++) for (var cc = 0; cc < C; cc++) {
+    var h = document.createElement("div"); h.className = "hole"; boardEl.appendChild(h); holes.push(h);
+  }
+
+  function newBoard() { var x = []; for (var r = 0; r < R; r++) x.push(new Array(C).fill(0)); return x; }
+  function dropRow(bd, col) { for (var r = R - 1; r >= 0; r--) if (!bd[r][col]) return r; return -1; }
+  function findWin(bd) {
+    var dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];
+    for (var r = 0; r < R; r++) for (var c = 0; c < C; c++) {
+      var p = bd[r][c]; if (!p) continue;
+      for (var k = 0; k < dirs.length; k++) {
+        var cells = [[r, c]], dr = dirs[k][0], dc = dirs[k][1];
+        for (var s = 1; s < 4; s++) {
+          var nr = r + dr * s, nc = c + dc * s;
+          if (nr < 0 || nr >= R || nc < 0 || nc >= C || bd[nr][nc] !== p) break;
+          cells.push([nr, nc]);
+        }
+        if (cells.length === 4) return { p: p, cells: cells };
+      }
+    }
+    return null;
+  }
+  function full(bd) { return bd[0].every(function (x) { return x; }); }
+
+  // Score a position for the computer (higher is better for CPU).
+  function evalBoard(bd) {
+    var score = 0, dirs = [[0, 1], [1, 0], [1, 1], [1, -1]];
+    for (var c = 0; c < R; c++) { /* centre preference below */ }
+    for (var r = 0; r < R; r++) if (bd[r][3] === CPU) score += 3; else if (bd[r][3] === YOU) score -= 3;
+    for (var r2 = 0; r2 < R; r2++) for (var c2 = 0; c2 < C; c2++) {
+      for (var k = 0; k < 4; k++) {
+        var mine = 0, theirs = 0, ok = true;
+        for (var s = 0; s < 4; s++) {
+          var nr = r2 + dirs[k][0] * s, nc = c2 + dirs[k][1] * s;
+          if (nr < 0 || nr >= R || nc < 0 || nc >= C) { ok = false; break; }
+          if (bd[nr][nc] === CPU) mine++; else if (bd[nr][nc] === YOU) theirs++;
+        }
+        if (!ok) continue;
+        if (mine && !theirs) score += mine === 3 ? 5 : mine === 2 ? 2 : 0;
+        if (theirs && !mine) score -= theirs === 3 ? 6 : theirs === 2 ? 2 : 0;
+      }
+    }
+    return score;
+  }
+  var ORDER = [3, 2, 4, 1, 5, 0, 6];
+  function search(bd, depth, alpha, beta, cpuTurn) {
+    var w = findWin(bd);
+    if (w) return w.p === CPU ? 100000 + depth : -100000 - depth;
+    if (full(bd) || depth === 0) return evalBoard(bd);
+    var best = cpuTurn ? -Infinity : Infinity;
+    for (var i = 0; i < C; i++) {
+      var col = ORDER[i], r = dropRow(bd, col);
+      if (r < 0) continue;
+      bd[r][col] = cpuTurn ? CPU : YOU;
+      var v = search(bd, depth - 1, alpha, beta, !cpuTurn);
+      bd[r][col] = 0;
+      if (cpuTurn) { if (v > best) best = v; if (best > alpha) alpha = best; }
+      else { if (v < best) best = v; if (best < beta) beta = best; }
+      if (alpha >= beta) break;
+    }
+    return best;
+  }
+  function cpuChoose() {
+    var bestV = -Infinity, pick = -1;
+    for (var i = 0; i < C; i++) {
+      var col = ORDER[i], r = dropRow(b, col);
+      if (r < 0) continue;
+      b[r][col] = CPU;
+      var v = search(b, 5, -Infinity, Infinity, false);
+      b[r][col] = 0;
+      if (v > bestV) { bestV = v; pick = col; }
+    }
+    return pick;
+  }
+
+  function draw(win) {
+    for (var r = 0; r < R; r++) for (var c = 0; c < C; c++) {
+      var el = holes[r * C + c], v = b[r][c];
+      var isWin = win && win.cells.some(function (x) { return x[0] === r && x[1] === c; });
+      el.className = "hole" + (v === YOU ? " you" : v === CPU ? " cpu" : "") + (isWin ? " win" : "");
+    }
+    dropBtns.forEach(function (d, c) { d.disabled = over || busy || dropRow(b, c) < 0; });
+    $("w").textContent = wins; $("l").textContent = losses; $("d").textContent = draws;
+  }
+  function finish(w) {
+    over = true;
+    if (w) {
+      if (w.p === YOU) { wins++; $("status").textContent = "You win!"; } else { losses++; $("status").textContent = "The computer wins."; }
+    } else { draws++; $("status").textContent = "It's a draw."; }
+    draw(w);
+  }
+  function human(col) {
+    if (over || busy) return;
+    var r = dropRow(b, col); if (r < 0) return;
+    b[r][col] = YOU;
+    var w = findWin(b);
+    if (w || full(b)) { finish(w); return; }
+    cpuTurn();
+  }
+  function cpuTurn() {
+    busy = true; $("status").textContent = "Computer is thinking..."; draw();
+    setTimeout(function () {
+      var col = cpuChoose(), r = dropRow(b, col);
+      b[r][col] = CPU; busy = false;
+      var w = findWin(b);
+      if (w || full(b)) { finish(w); return; }
+      $("status").textContent = "Your turn."; draw();
+    }, 300);
+  }
+  function newGame() {
+    b = newBoard(); over = false; busy = false;
+    $("status").textContent = starter === YOU ? "Your turn." : "";
+    draw();
+    if (starter === CPU) cpuTurn();
+    starter = starter === YOU ? CPU : YOU;
+  }
+  $("new").addEventListener("click", newGame);
+  newGame();
+})();
+</script>
+
+</body></html>
