@@ -2,7 +2,7 @@
 
 Connect Four is a small web game. Drop discs into a 7-column, 6-row board and try to get four in a row (across, up and down, or diagonal) before the computer does. It keeps count of your wins, losses and draws, highlights the winning four, and alternates who starts each game.
 
-Live demo: https://YOUR-USERNAME.github.io/Connect-Four/
+Live demo: https://rajshrestha-07.github.io/Connect-Four/
 
 Built with: HTML, CSS and JavaScript.
 
